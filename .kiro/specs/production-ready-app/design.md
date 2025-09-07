@@ -2,38 +2,51 @@
 
 ## Overview
 
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, implementing Domain-Driven Design (DDD) principles.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, implementing domain-driven design principles.
 
 ## Architecture
+
+The application follows a three-tier architecture with additional supporting services:
+
+```mermaid
+graph TD
+    Client[Client Applications] --> API[API Gateway]
+    API --> Auth[Auth Service]
+    API --> Projects[Project Service]
+    API --> Analytics[Analytics Service]
+    API --> Storage[Storage Service]
+    API --> Notifications[Notification Service]
+    All --> DB[(PostgreSQL)]
+```
 
 ### System Components
 
 1. **Frontend Layer (Next.js)**
-   - Server-side rendered React application
+   - Server-side rendered React applications
    - Redux for state management
-   - Material-UI component library
-   - WebSocket integration for real-time features
-   - Progressive Web App (PWA) capabilities
+   - Material-UI for component library
+   - React Query for data fetching and caching
+   - Progressive Web App (PWA) support
 
 2. **Backend Layer (NestJS)**
-   - Modular microservices architecture
-   - RESTful API endpoints
-   - WebSocket gateway for real-time communication
-   - Task queue system for background jobs
-   - Caching layer with Redis
+   - Microservices architecture
+   - REST and GraphQL APIs
+   - JWT-based authentication
+   - Role-based access control (RBAC)
+   - WebSocket support for real-time features
 
 3. **Database Layer (PostgreSQL)**
    - Multi-tenant architecture
    - Read replicas for scaling
    - Materialized views for analytics
-   - Partitioned tables for large datasets
+   - Partitioning for large tables
 
 4. **External Integrations**
    - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Stripe for payments
-   - Analytics services integration
+   - Redis for caching
+   - Elasticsearch for search functionality
 
 ## Components and Interfaces
 
@@ -43,19 +56,21 @@ Production Ready App is a scalable SaaS platform built with enterprise-grade arc
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
-  async googleLogin(token: string): Promise<AuthResponse>;
+  async createUser(createUserDto: CreateUserDto): Promise<User>;
+  async generateToken(user: User): Promise<string>;
 }
 
 @Injectable()
 export class ProjectService {
-  async createProject(data: CreateProjectDto): Promise<Project>;
-  async getProjectAnalytics(projectId: string): Promise<ProjectAnalytics>;
+  async createProject(createProjectDto: CreateProjectDto): Promise<Project>;
+  async getProjects(userId: string): Promise<Project[]>;
+  async updateProject(id: string, updateProjectDto: UpdateProjectDto): Promise<Project>;
 }
 
 @Injectable()
-export class NotificationService {
-  async sendEmail(to: string, template: EmailTemplate, data: any): Promise<void>;
-  async sendRealTimeNotification(userId: string, notification: Notification): Promise<void>;
+export class AnalyticsService {
+  async getDashboardMetrics(userId: string): Promise<DashboardMetrics>;
+  async generateReport(reportConfig: ReportConfig): Promise<Report>;
 }
 ```
 
@@ -63,21 +78,20 @@ export class NotificationService {
 
 ```typescript
 interface DashboardProps {
-  analytics: AnalyticsData;
-  projects: Project[];
+  metrics: DashboardMetrics;
   onRefresh: () => void;
 }
 
-interface ProjectCardProps {
-  project: Project;
-  onUpdate: (project: Project) => void;
-  onDelete: (id: string) => void;
+interface ProjectListProps {
+  projects: Project[];
+  onProjectSelect: (projectId: string) => void;
+  onProjectCreate: (project: CreateProjectDto) => void;
 }
 
 interface FileUploadProps {
-  maxSize: number;
-  allowedTypes: string[];
   onUpload: (file: File) => Promise<void>;
+  allowedTypes: string[];
+  maxSize: number;
 }
 ```
 
@@ -97,8 +111,8 @@ export class User {
   @Column()
   hashedPassword: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  googleProfile: any;
+  @Column({ type: 'json' })
+  roles: string[];
 
   @OneToMany(() => Project, project => project.owner)
   projects: Project[];
@@ -120,9 +134,6 @@ export class Project {
 
   @OneToMany(() => Task, task => task.project)
   tasks: Task[];
-
-  @CreateDateColumn()
-  createdAt: Date;
 }
 
 @Entity('tasks')
@@ -146,26 +157,17 @@ export class Task {
 
 ## Error Handling
 
-1. **Global Exception Filter**
+- Global exception filter for consistent error responses
+- Custom exception classes for domain-specific errors
+- HTTP status codes mapping to application errors
+- Structured error logging with correlation IDs
+- Retry mechanisms for transient failures
+
 ```typescript
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
-    // Handle different types of exceptions
-    // Return standardized error responses
-  }
-}
-```
-
-2. **Custom Exceptions**
-```typescript
-export class BusinessException extends Error {
-  constructor(
-    public readonly code: string,
-    public readonly message: string,
-    public readonly status: number = HttpStatus.BAD_REQUEST,
-  ) {
-    super(message);
+    // Implementation
   }
 }
 ```
@@ -174,49 +176,48 @@ export class BusinessException extends Error {
 
 1. **Unit Tests**
    - Jest for testing framework
-   - Mock external dependencies
-   - Test business logic in isolation
+   - Service and component unit tests
+   - Mocking external dependencies
 
 2. **Integration Tests**
-   - Test API endpoints
+   - API endpoint testing
    - Database integration tests
    - External service integration tests
 
 3. **E2E Tests**
-   - Cypress for frontend testing
-   - API endpoint testing
-   - User flow testing
+   - Cypress for frontend E2E testing
+   - API E2E testing with supertest
+   - Performance testing with k6
 
 ```typescript
 describe('ProjectService', () => {
-  it('should create a new project', async () => {
-    const project = await projectService.createProject({
-      name: 'Test Project',
-      description: 'Test Description'
-    });
-    expect(project).toBeDefined();
+  it('should create a project', async () => {
+    // Test implementation
   });
 });
 ```
 
 ## Security Considerations
 
-1. **Authentication & Authorization**
-   - JWT-based authentication
-   - Role-based access control
-   - OAuth 2.0 integration
+- OAuth 2.0 and JWT for authentication
+- HTTPS enforcement
+- CORS configuration
+- Rate limiting
+- Input validation
+- SQL injection prevention
+- XSS protection
+- CSRF protection
+- Regular security audits
 
-2. **Data Protection**
-   - Data encryption at rest
-   - HTTPS enforcement
-   - Input validation
-   - XSS protection
-   - CSRF protection
+## Performance Optimization
 
-3. **API Security**
-   - Rate limiting
-   - Request validation
-   - API key management
-   - Audit logging
+- Redis caching
+- Database indexing
+- Query optimization
+- CDN for static assets
+- Image optimization
+- Lazy loading
+- Code splitting
+- Server-side rendering
 
-This design document provides a foundation for implementing the Production Ready App with scalability, security, and maintainability in mind. The architecture supports all required features while following best practices and industry standards.
+This design document provides a foundation for implementing the Production Ready App. The architecture is scalable and maintainable, with clear separation of concerns and robust security measures.
