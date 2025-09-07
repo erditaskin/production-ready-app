@@ -2,96 +2,79 @@
 
 ## Overview
 
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-oriented architecture with clear separation of concerns, utilizing Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture following microservices principles. The system uses Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence. The architecture emphasizes security, scalability, and real-time capabilities.
 
 ## Architecture
-
-### High-Level Architecture Diagram
-```
-[Client] → [Next.js Frontend] → [NestJS Backend API] → [PostgreSQL]
-                ↓                        ↓
-        [Redis Cache] ← → [Message Queue] → [Background Workers]
-                                ↓
-                        [External Services]
-                        - Google OAuth
-                        - Email Service
-                        - File Storage
-```
 
 ### System Components
 
 1. **Frontend Layer (Next.js)**
-   - Server-side rendered React applications
+   - Server-side rendered React application
    - Redux for state management
    - Material-UI component library
-   - Real-time WebSocket connections
+   - WebSocket integration for real-time updates
    - Progressive Web App (PWA) capabilities
 
 2. **Backend Layer (NestJS)**
+   - Modular microservices architecture
    - RESTful API endpoints
    - WebSocket gateway for real-time features
-   - Modular architecture with feature-based modules
    - JWT-based authentication
    - Role-based access control (RBAC)
 
 3. **Database Layer (PostgreSQL)**
    - Relational database with TypeORM
    - Database migrations
-   - Optimized indexes
-   - Partitioning for large tables
+   - Connection pooling
+   - Read replicas for scaling
 
 4. **External Integrations**
    - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Redis for caching and rate limiting
+   - Redis for caching and session management
 
 ## Components and Interfaces
 
 ### Backend Services
 
 ```typescript
-// Auth Service
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
   async login(user: User): Promise<{ access_token: string }>;
-  async register(createUserDto: CreateUserDto): Promise<User>;
+  async register(userData: CreateUserDto): Promise<User>;
 }
 
-// Project Service
 @Injectable()
 export class ProjectService {
-  async createProject(createProjectDto: CreateProjectDto): Promise<Project>;
+  async createProject(data: CreateProjectDto): Promise<Project>;
   async getProjects(userId: string): Promise<Project[]>;
-  async updateProject(id: string, updateProjectDto: UpdateProjectDto): Promise<Project>;
+  async updateProject(id: string, data: UpdateProjectDto): Promise<Project>;
 }
 
-// Analytics Service
 @Injectable()
 export class AnalyticsService {
   async getDashboardMetrics(userId: string): Promise<DashboardMetrics>;
-  async generateReport(reportConfig: ReportConfig): Promise<Report>;
+  async generateReport(filters: ReportFilters): Promise<Report>;
 }
 ```
 
 ### Frontend Components
 
 ```typescript
-// Dashboard Component
 interface DashboardProps {
   metrics: DashboardMetrics;
   onRefresh: () => void;
+  loading: boolean;
 }
 
-// Project List Component
 interface ProjectListProps {
   projects: Project[];
   onProjectSelect: (projectId: string) => void;
-  onProjectCreate: (project: CreateProjectDto) => void;
+  onCreateProject: (data: CreateProjectDto) => void;
 }
 
-// File Upload Component
 interface FileUploadProps {
   onUpload: (file: File) => Promise<void>;
   allowedTypes: string[];
@@ -115,8 +98,8 @@ export class User {
   @Column()
   hashedPassword: string;
 
-  @Column({ type: 'json' })
-  roles: string[];
+  @Column({ type: 'enum', enum: UserRole })
+  role: UserRole;
 
   @OneToMany(() => Project, project => project.owner)
   projects: Project[];
@@ -166,39 +149,45 @@ export class Task {
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
-    // Handle different types of exceptions
-    // Return standardized error responses
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse();
+    const status = exception.status || HttpStatus.INTERNAL_SERVER_ERROR;
+
+    response.status(status).json({
+      statusCode: status,
+      timestamp: new Date().toISOString(),
+      message: exception.message || 'Internal server error',
+      path: ctx.getRequest().url,
+    });
   }
 }
 ```
 
-2. **HTTP Error Responses**
+2. **Custom Error Classes**
 ```typescript
-interface ErrorResponse {
-  statusCode: number;
-  message: string;
-  error: string;
-  timestamp: string;
-  path: string;
+export class BusinessLogicException extends Error {
+  constructor(message: string, public readonly code: string) {
+    super(message);
+  }
 }
 ```
 
 ## Testing Strategy
 
 1. **Unit Tests**
-   - Service layer testing
-   - Component testing
-   - Utility function testing
+   - Jest for testing framework
+   - Service and component unit tests
+   - Mock external dependencies
 
 2. **Integration Tests**
    - API endpoint testing
-   - Database operations testing
-   - External service integration testing
+   - Database integration tests
+   - External service integration tests
 
 3. **E2E Tests**
+   - Cypress for frontend E2E testing
+   - API E2E testing with supertest
    - User flow testing
-   - Critical path testing
-   - Performance testing
 
 ```typescript
 describe('AuthService', () => {
@@ -218,4 +207,4 @@ describe('AuthService', () => {
 });
 ```
 
-This design document provides a solid foundation for implementing the Production Ready App. The architecture is scalable, maintainable, and follows best practices for modern web applications. The component interfaces and data models are designed to support all the required features while maintaining flexibility for future enhancements.
+This design document provides a foundation for implementing the Production Ready App. The architecture supports scalability through microservices, ensures security with proper authentication and authorization, and maintains data integrity through well-defined models and relationships. The testing strategy ensures reliability and maintainability of the codebase.
