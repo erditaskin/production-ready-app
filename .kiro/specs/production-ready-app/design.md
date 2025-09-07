@@ -1,54 +1,43 @@
 # Design Document - Production Ready App
 
 ## Overview
-
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, utilizing Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture. The system follows a microservices-based approach with clear separation of concerns, implementing Domain-Driven Design (DDD) principles. The architecture ensures high availability, fault tolerance, and horizontal scalability.
 
 ## Architecture
-
-The system implements a three-tier architecture with additional supporting services:
-
-```mermaid
-graph TD
-    Client[Client Browser/Mobile]
-    --> Frontend[Next.js Frontend]
-    --> API[NestJS API Gateway]
-    --> Services[Microservices]
-    --> Database[(PostgreSQL)]
-    
-    API --> Auth[Auth Service]
-    API --> Storage[File Storage]
-    API --> Email[Email Service]
-```
 
 ### System Components
 
 1. **Frontend Layer (Next.js)**
    - Server-side rendered React applications
-   - Redux for state management
-   - Material-UI component library
-   - Real-time WebSocket connections
-   - Progressive Web App capabilities
+   - State management using Redux Toolkit
+   - Component library with Material-UI
+   - Progressive Web App (PWA) support
+   - Route-based code splitting
+   - Static site generation for public pages
 
 2. **Backend Layer (NestJS)**
-   - RESTful API endpoints
-   - GraphQL API for complex queries
-   - WebSocket gateway for real-time features
    - Microservices architecture
+   - RESTful API endpoints
+   - WebSocket support for real-time features
    - JWT-based authentication
+   - Role-based access control (RBAC)
+   - Rate limiting and request validation
+   - Caching layer with Redis
 
 3. **Database Layer (PostgreSQL)**
-   - Normalized schema design
-   - TypeORM for ORM
-   - Database migrations
+   - Multi-tenant architecture
    - Read replicas for scaling
+   - Connection pooling
+   - Full-text search capabilities
+   - Automated backups
+   - Data partitioning strategy
 
 4. **External Integrations**
-   - Google OAuth
+   - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Redis for caching
-   - Elasticsearch for search
+   - Stripe for payments
+   - Analytics integration
 
 ## Components and Interfaces
 
@@ -58,19 +47,21 @@ graph TD
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
-  async createToken(user: User): Promise<AuthToken>;
+  async generateToken(user: User): Promise<string>;
 }
 
 @Injectable()
 export class ProjectService {
   async createProject(dto: CreateProjectDto): Promise<Project>;
-  async getProjectAnalytics(projectId: string): Promise<Analytics>;
+  async getProjects(userId: string): Promise<Project[]>;
+  async updateProject(id: string, dto: UpdateProjectDto): Promise<Project>;
 }
 
 @Injectable()
 export class TaskService {
   async createTask(dto: CreateTaskDto): Promise<Task>;
   async assignTask(taskId: string, userId: string): Promise<Task>;
+  async updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task>;
 }
 ```
 
@@ -79,15 +70,18 @@ export class TaskService {
 ```typescript
 interface DashboardProps {
   projects: Project[];
-  analytics: Analytics;
-  onProjectSelect: (projectId: string) => void;
+  tasks: Task[];
+  analytics: AnalyticsData;
+  onProjectCreate: (data: CreateProjectDto) => void;
+  onTaskUpdate: (taskId: string, status: TaskStatus) => void;
 }
 
-interface TaskBoardProps {
+interface ProjectBoardProps {
+  project: Project;
   tasks: Task[];
-  users: User[];
-  onTaskUpdate: (task: Task) => void;
-  onTaskAssign: (taskId: string, userId: string) => void;
+  members: User[];
+  onTaskDrag: (taskId: string, status: TaskStatus) => void;
+  onMemberAdd: (email: string) => void;
 }
 ```
 
@@ -107,6 +101,9 @@ export class User {
   @Column()
   hashedPassword: string;
 
+  @Column({ type: 'enum', enum: UserRole })
+  role: UserRole;
+
   @OneToMany(() => Project, project => project.owner)
   projects: Project[];
 }
@@ -119,11 +116,17 @@ export class Project {
   @Column()
   name: string;
 
+  @Column()
+  description: string;
+
   @ManyToOne(() => User, user => user.projects)
   owner: User;
 
   @OneToMany(() => Task, task => task.project)
   tasks: Task[];
+
+  @CreateDateColumn()
+  createdAt: Date;
 }
 
 @Entity('tasks')
@@ -134,10 +137,10 @@ export class Task {
   @Column()
   title: string;
 
-  @Column('text')
+  @Column()
   description: string;
 
-  @Column('enum', { enum: TaskStatus })
+  @Column({ type: 'enum', enum: TaskStatus })
   status: TaskStatus;
 
   @ManyToOne(() => Project, project => project.tasks)
@@ -150,33 +153,18 @@ export class Task {
 
 ## Error Handling
 
-1. **Global Exception Filter**
+- Global exception filter for consistent error responses
+- Custom exception classes for domain-specific errors
+- HTTP status codes mapping
+- Error logging and monitoring with Sentry
+- Retry mechanisms for external service calls
+- Circuit breaker pattern for critical services
+
 ```typescript
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse();
-    const status = exception.getStatus?.() || 500;
-
-    response.status(status).json({
-      statusCode: status,
-      timestamp: new Date().toISOString(),
-      message: exception.message || 'Internal server error',
-    });
-  }
-}
-```
-
-2. **Error Types**
-```typescript
-export class ApplicationError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly status: number = 400,
-  ) {
-    super(message);
+    // Implementation
   }
 }
 ```
@@ -185,44 +173,46 @@ export class ApplicationError extends Error {
 
 1. **Unit Tests**
    - Jest for testing framework
-   - Test individual services and components
-   - Mock external dependencies
+   - Service and component unit tests
+   - Mocking external dependencies
 
 2. **Integration Tests**
-   - Test API endpoints
-   - Database interactions
-   - External service integrations
+   - API endpoint testing
+   - Database integration tests
+   - External service integration tests
 
 3. **E2E Tests**
-   - Cypress for frontend testing
-   - Full user journey testing
-   - API contract testing with Pact
+   - Cypress for frontend E2E testing
+   - API E2E tests with supertest
+   - Performance testing with k6
 
 ```typescript
-describe('AuthService', () => {
-  let service: AuthService;
-
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [AuthService],
-    }).compile();
-
-    service = module.get(AuthService);
-  });
-
-  it('should validate user credentials', async () => {
-    const result = await service.validateUser('test@example.com', 'password');
-    expect(result).toBeDefined();
+describe('ProjectService', () => {
+  it('should create a new project', async () => {
+    // Test implementation
   });
 });
 ```
 
-The design includes additional considerations for:
-- Scalability through microservices
-- Security with JWT and OAuth
-- Performance optimization with caching
-- Real-time capabilities with WebSockets
-- Comprehensive testing strategy
-- Clear error handling patterns
-- Type safety with TypeScript
-- Database optimization with indexes and constraints
+## Security Considerations
+
+1. **Authentication & Authorization**
+   - JWT-based authentication
+   - Role-based access control
+   - OAuth 2.0 integration
+   - Session management
+
+2. **Data Security**
+   - Data encryption at rest
+   - HTTPS enforcement
+   - Input validation
+   - XSS protection
+   - CSRF protection
+
+3. **API Security**
+   - Rate limiting
+   - API key management
+   - Request validation
+   - Audit logging
+
+This design document provides a foundation for implementing the Production Ready App with scalability, security, and maintainability in mind. The architecture supports all required features while following best practices and industry standards.
