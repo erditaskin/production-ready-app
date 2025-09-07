@@ -2,20 +2,20 @@
 
 ## Overview
 
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, utilizing Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-oriented architecture with clear separation of concerns, utilizing Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence.
 
 ## Architecture
 
-The system implements a three-tier architecture with additional supporting services:
-
-```mermaid
-graph TD
-    Client[Client Browser/Mobile] --> FE[Frontend Layer - Next.js]
-    FE --> API[Backend API Layer - NestJS]
-    API --> DB[(PostgreSQL)]
-    API --> Cache[(Redis Cache)]
-    API --> Queue[Message Queue - Bull]
-    API --> External[External Services]
+### High-Level Architecture Diagram
+```
+[Client] → [Next.js Frontend] → [NestJS Backend API] → [PostgreSQL]
+                ↓                        ↓
+        [Redis Cache] ← → [Message Queue] → [Background Workers]
+                                ↓
+                        [External Services]
+                        - Google OAuth
+                        - Email Service
+                        - File Storage
 ```
 
 ### System Components
@@ -30,7 +30,7 @@ graph TD
 2. **Backend Layer (NestJS)**
    - RESTful API endpoints
    - WebSocket gateway for real-time features
-   - Modular architecture with domain-driven design
+   - Modular architecture with feature-based modules
    - JWT-based authentication
    - Role-based access control (RBAC)
 
@@ -44,8 +44,7 @@ graph TD
    - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Stripe for payments
-   - Analytics services integration
+   - Redis for caching and rate limiting
 
 ## Components and Interfaces
 
@@ -56,48 +55,45 @@ graph TD
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
-  async googleLogin(token: string): Promise<AuthResponse>;
-  async generateJWT(user: User): Promise<string>;
+  async login(user: User): Promise<{ access_token: string }>;
+  async register(createUserDto: CreateUserDto): Promise<User>;
 }
 
 // Project Service
 @Injectable()
 export class ProjectService {
-  async createProject(dto: CreateProjectDto): Promise<Project>;
-  async getProjectAnalytics(projectId: string): Promise<Analytics>;
-  async assignUsers(projectId: string, userIds: string[]): Promise<void>;
+  async createProject(createProjectDto: CreateProjectDto): Promise<Project>;
+  async getProjects(userId: string): Promise<Project[]>;
+  async updateProject(id: string, updateProjectDto: UpdateProjectDto): Promise<Project>;
 }
 
-// Task Service
+// Analytics Service
 @Injectable()
-export class TaskService {
-  async createTask(dto: CreateTaskDto): Promise<Task>;
-  async updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task>;
-  async getTasksByProject(projectId: string): Promise<Task[]>;
+export class AnalyticsService {
+  async getDashboardMetrics(userId: string): Promise<DashboardMetrics>;
+  async generateReport(reportConfig: ReportConfig): Promise<Report>;
 }
 ```
 
 ### Frontend Components
 
 ```typescript
-// Project Dashboard Component
+// Dashboard Component
 interface DashboardProps {
-  projectId: string;
-  analytics: Analytics;
+  metrics: DashboardMetrics;
   onRefresh: () => void;
 }
 
-// Task List Component
-interface TaskListProps {
-  tasks: Task[];
-  onStatusChange: (taskId: string, status: TaskStatus) => void;
-  onDelete: (taskId: string) => void;
+// Project List Component
+interface ProjectListProps {
+  projects: Project[];
+  onProjectSelect: (projectId: string) => void;
+  onProjectCreate: (project: CreateProjectDto) => void;
 }
 
 // File Upload Component
 interface FileUploadProps {
-  projectId: string;
-  onUploadComplete: (fileUrl: string) => void;
+  onUpload: (file: File) => Promise<void>;
   allowedTypes: string[];
   maxSize: number;
 }
@@ -119,10 +115,10 @@ export class User {
   @Column()
   hashedPassword: string;
 
-  @Column({ enum: UserRole })
-  role: UserRole;
+  @Column({ type: 'json' })
+  roles: string[];
 
-  @ManyToMany(() => Project)
+  @OneToMany(() => Project, project => project.owner)
   projects: Project[];
 }
 
@@ -134,14 +130,14 @@ export class Project {
   @Column()
   name: string;
 
-  @Column()
+  @Column({ type: 'text' })
   description: string;
 
-  @OneToMany(() => Task)
-  tasks: Task[];
+  @ManyToOne(() => User, user => user.projects)
+  owner: User;
 
-  @ManyToMany(() => User)
-  members: User[];
+  @OneToMany(() => Task, task => task.project)
+  tasks: Task[];
 }
 
 @Entity('tasks')
@@ -152,17 +148,14 @@ export class Task {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ type: 'text' })
   description: string;
 
-  @Column({ enum: TaskStatus })
+  @Column({ type: 'enum', enum: TaskStatus })
   status: TaskStatus;
 
-  @ManyToOne(() => Project)
+  @ManyToOne(() => Project, project => project.tasks)
   project: Project;
-
-  @ManyToOne(() => User)
-  assignee: User;
 }
 ```
 
@@ -179,7 +172,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 }
 ```
 
-2. **Error Response Format**
+2. **HTTP Error Responses**
 ```typescript
 interface ErrorResponse {
   statusCode: number;
@@ -193,23 +186,36 @@ interface ErrorResponse {
 ## Testing Strategy
 
 1. **Unit Tests**
-   - Jest for testing individual components
-   - Mock external dependencies
-   - Coverage threshold: 80%
+   - Service layer testing
+   - Component testing
+   - Utility function testing
 
 2. **Integration Tests**
-   - Test API endpoints with supertest
-   - Database integration tests
-   - External service integration tests
+   - API endpoint testing
+   - Database operations testing
+   - External service integration testing
 
 3. **E2E Tests**
-   - Cypress for frontend testing
-   - Complete user flow testing
-   - Cross-browser compatibility
+   - User flow testing
+   - Critical path testing
+   - Performance testing
 
-4. **Performance Tests**
-   - Load testing with Artillery
-   - Stress testing for scaling validation
-   - Response time benchmarking
+```typescript
+describe('AuthService', () => {
+  let service: AuthService;
 
-This design document provides a foundation for implementing the Production Ready App. The architecture ensures scalability, maintainability, and security while following best practices in modern web development.
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [AuthService],
+    }).compile();
+
+    service = module.get<AuthService>(AuthService);
+  });
+
+  it('should validate user credentials', async () => {
+    // Test implementation
+  });
+});
+```
+
+This design document provides a solid foundation for implementing the Production Ready App. The architecture is scalable, maintainable, and follows best practices for modern web applications. The component interfaces and data models are designed to support all the required features while maintaining flexibility for future enhancements.
