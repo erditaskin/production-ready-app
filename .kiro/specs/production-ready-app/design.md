@@ -2,21 +2,20 @@
 
 ## Overview
 
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, implementing domain-driven design principles.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, utilizing Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence.
 
 ## Architecture
 
-The application follows a three-tier architecture with additional supporting services:
+The system implements a three-tier architecture with additional supporting services:
 
 ```mermaid
 graph TD
-    Client[Client Applications] --> API[API Gateway]
-    API --> Auth[Auth Service]
-    API --> Projects[Project Service]
-    API --> Analytics[Analytics Service]
-    API --> Storage[Storage Service]
-    API --> Notifications[Notification Service]
-    All --> DB[(PostgreSQL)]
+    Client[Client Browser/Mobile] --> FE[Frontend Layer - Next.js]
+    FE --> API[Backend API Layer - NestJS]
+    API --> DB[(PostgreSQL)]
+    API --> Cache[(Redis Cache)]
+    API --> Queue[Message Queue - Bull]
+    API --> External[External Services]
 ```
 
 ### System Components
@@ -24,72 +23,81 @@ graph TD
 1. **Frontend Layer (Next.js)**
    - Server-side rendered React applications
    - Redux for state management
-   - Material-UI for component library
-   - React Query for data fetching and caching
-   - Progressive Web App (PWA) support
+   - Material-UI component library
+   - Real-time WebSocket connections
+   - Progressive Web App (PWA) capabilities
 
 2. **Backend Layer (NestJS)**
-   - Microservices architecture
-   - REST and GraphQL APIs
+   - RESTful API endpoints
+   - WebSocket gateway for real-time features
+   - Modular architecture with domain-driven design
    - JWT-based authentication
    - Role-based access control (RBAC)
-   - WebSocket support for real-time features
 
 3. **Database Layer (PostgreSQL)**
-   - Multi-tenant architecture
-   - Read replicas for scaling
-   - Materialized views for analytics
+   - Relational database with TypeORM
+   - Database migrations
+   - Optimized indexes
    - Partitioning for large tables
 
 4. **External Integrations**
    - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Redis for caching
-   - Elasticsearch for search functionality
+   - Stripe for payments
+   - Analytics services integration
 
 ## Components and Interfaces
 
 ### Backend Services
 
 ```typescript
+// Auth Service
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
-  async createUser(createUserDto: CreateUserDto): Promise<User>;
-  async generateToken(user: User): Promise<string>;
+  async googleLogin(token: string): Promise<AuthResponse>;
+  async generateJWT(user: User): Promise<string>;
 }
 
+// Project Service
 @Injectable()
 export class ProjectService {
-  async createProject(createProjectDto: CreateProjectDto): Promise<Project>;
-  async getProjects(userId: string): Promise<Project[]>;
-  async updateProject(id: string, updateProjectDto: UpdateProjectDto): Promise<Project>;
+  async createProject(dto: CreateProjectDto): Promise<Project>;
+  async getProjectAnalytics(projectId: string): Promise<Analytics>;
+  async assignUsers(projectId: string, userIds: string[]): Promise<void>;
 }
 
+// Task Service
 @Injectable()
-export class AnalyticsService {
-  async getDashboardMetrics(userId: string): Promise<DashboardMetrics>;
-  async generateReport(reportConfig: ReportConfig): Promise<Report>;
+export class TaskService {
+  async createTask(dto: CreateTaskDto): Promise<Task>;
+  async updateTaskStatus(taskId: string, status: TaskStatus): Promise<Task>;
+  async getTasksByProject(projectId: string): Promise<Task[]>;
 }
 ```
 
 ### Frontend Components
 
 ```typescript
+// Project Dashboard Component
 interface DashboardProps {
-  metrics: DashboardMetrics;
+  projectId: string;
+  analytics: Analytics;
   onRefresh: () => void;
 }
 
-interface ProjectListProps {
-  projects: Project[];
-  onProjectSelect: (projectId: string) => void;
-  onProjectCreate: (project: CreateProjectDto) => void;
+// Task List Component
+interface TaskListProps {
+  tasks: Task[];
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
+  onDelete: (taskId: string) => void;
 }
 
+// File Upload Component
 interface FileUploadProps {
-  onUpload: (file: File) => Promise<void>;
+  projectId: string;
+  onUploadComplete: (fileUrl: string) => void;
   allowedTypes: string[];
   maxSize: number;
 }
@@ -111,10 +119,10 @@ export class User {
   @Column()
   hashedPassword: string;
 
-  @Column({ type: 'json' })
-  roles: string[];
+  @Column({ enum: UserRole })
+  role: UserRole;
 
-  @OneToMany(() => Project, project => project.owner)
+  @ManyToMany(() => Project)
   projects: Project[];
 }
 
@@ -126,14 +134,14 @@ export class Project {
   @Column()
   name: string;
 
-  @Column({ type: 'text' })
+  @Column()
   description: string;
 
-  @ManyToOne(() => User, user => user.projects)
-  owner: User;
-
-  @OneToMany(() => Task, task => task.project)
+  @OneToMany(() => Task)
   tasks: Task[];
+
+  @ManyToMany(() => User)
+  members: User[];
 }
 
 @Entity('tasks')
@@ -144,80 +152,64 @@ export class Task {
   @Column()
   title: string;
 
-  @Column({ type: 'text' })
+  @Column()
   description: string;
 
-  @Column({ type: 'enum', enum: TaskStatus })
+  @Column({ enum: TaskStatus })
   status: TaskStatus;
 
-  @ManyToOne(() => Project, project => project.tasks)
+  @ManyToOne(() => Project)
   project: Project;
+
+  @ManyToOne(() => User)
+  assignee: User;
 }
 ```
 
 ## Error Handling
 
-- Global exception filter for consistent error responses
-- Custom exception classes for domain-specific errors
-- HTTP status codes mapping to application errors
-- Structured error logging with correlation IDs
-- Retry mechanisms for transient failures
-
+1. **Global Exception Filter**
 ```typescript
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
-    // Implementation
+    // Handle different types of exceptions
+    // Return standardized error responses
   }
+}
+```
+
+2. **Error Response Format**
+```typescript
+interface ErrorResponse {
+  statusCode: number;
+  message: string;
+  error: string;
+  timestamp: string;
+  path: string;
 }
 ```
 
 ## Testing Strategy
 
 1. **Unit Tests**
-   - Jest for testing framework
-   - Service and component unit tests
-   - Mocking external dependencies
+   - Jest for testing individual components
+   - Mock external dependencies
+   - Coverage threshold: 80%
 
 2. **Integration Tests**
-   - API endpoint testing
+   - Test API endpoints with supertest
    - Database integration tests
    - External service integration tests
 
 3. **E2E Tests**
-   - Cypress for frontend E2E testing
-   - API E2E testing with supertest
-   - Performance testing with k6
+   - Cypress for frontend testing
+   - Complete user flow testing
+   - Cross-browser compatibility
 
-```typescript
-describe('ProjectService', () => {
-  it('should create a project', async () => {
-    // Test implementation
-  });
-});
-```
+4. **Performance Tests**
+   - Load testing with Artillery
+   - Stress testing for scaling validation
+   - Response time benchmarking
 
-## Security Considerations
-
-- OAuth 2.0 and JWT for authentication
-- HTTPS enforcement
-- CORS configuration
-- Rate limiting
-- Input validation
-- SQL injection prevention
-- XSS protection
-- CSRF protection
-- Regular security audits
-
-## Performance Optimization
-
-- Redis caching
-- Database indexing
-- Query optimization
-- CDN for static assets
-- Image optimization
-- Lazy loading
-- Code splitting
-- Server-side rendering
-
-This design document provides a foundation for implementing the Production Ready App. The architecture is scalable and maintainable, with clear separation of concerns and robust security measures.
+This design document provides a foundation for implementing the Production Ready App. The architecture ensures scalability, maintainability, and security while following best practices in modern web development.
