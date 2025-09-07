@@ -1,124 +1,174 @@
-Here's a detailed implementation plan focusing on specific coding tasks:
+Here's a detailed implementation plan with specific coding tasks:
 
 # Implementation Plan
 
-- [ ] 1. Core Database Setup
-  - Create `backend/src/entities/user.entity.ts` with User model
-  - Create `backend/src/entities/project.entity.ts` with Project model
-  - Create `backend/src/entities/task.entity.ts` with Task model
-  - Implement `backend/src/config/typeorm.config.ts` for database connection
-  - Create initial migration script
-  - Write entity unit tests
-  ```typescript
-  // Example user.entity.ts structure
-  @Entity()
-  export class User {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
-    
-    @Column()
-    email: string;
-    
-    @OneToMany(() => Project, project => project.owner)
-    projects: Project[];
-  }
-  ```
+## 1. Database and Core Setup
+- [ ] 1.1 Create Base Entities
+```typescript
+// backend/src/entities/user.entity.ts
+- Define User entity with email, password, profile fields
+- Add TypeORM decorators and validation
+- Create migration script
 
-- [ ] 2. Authentication System
-  - Create `backend/src/auth/auth.service.ts` with Google OAuth integration
-  - Implement `backend/src/auth/guards/jwt.guard.ts` for route protection
-  - Create `backend/src/auth/strategies/google.strategy.ts`
-  - Add `backend/src/auth/dto/auth.dto.ts` for validation
-  - Write authentication unit tests
-  ```typescript
-  // Example auth.service.ts method
-  async validateUser(email: string, profile: GoogleProfile): Promise<User> {
-    // Implementation
-  }
-  ```
+// backend/src/entities/project.entity.ts
+- Define Project entity with name, description, members
+- Add TypeORM relationships to User and Task entities
+- Create migration script
+```
 
-- [ ] 3. User Management Service
-  - Create `backend/src/users/users.service.ts` with CRUD operations
-  - Implement `backend/src/users/users.controller.ts` with REST endpoints
-  - Add `backend/src/users/dto/create-user.dto.ts` and `update-user.dto.ts`
-  - Create user preferences handling
-  - Write service and controller tests
+- [ ] 1.2 Configure Database Connection
+```typescript
+// backend/src/config/database.config.ts
+- Set up TypeORM configuration
+- Implement environment variable loading
+- Create connection testing utility
+```
 
-- [ ] 4. Project Management Module
-  - Create `backend/src/projects/projects.service.ts` with business logic
-  - Implement `backend/src/projects/projects.controller.ts`
-  - Add project member management methods
-  - Create project statistics calculations
-  - Write integration tests for project endpoints
+## 2. Authentication System
+- [ ] 2.1 Auth Service Implementation
+```typescript
+// backend/src/auth/auth.service.ts
+- Implement GoogleOAuth strategy
+- Create JWT token generation/validation
+- Add password hashing utilities
+- Write unit tests for auth methods
 
-- [ ] 5. Frontend Authentication Components
-  - Create `frontend/components/auth/LoginButton.tsx`
-  - Implement `frontend/hooks/useAuth.ts` custom hook
-  - Add `frontend/services/auth.service.ts` for API calls
-  - Create protected route wrapper
-  - Write component tests
-  ```typescript
-  // Example useAuth.ts hook
-  export const useAuth = () => {
-    const [user, setUser] = useState<User | null>(null);
-    
-    const login = async (credentials: LoginCredentials) => {
-      // Implementation
-    };
-    
-    return { user, login };
-  };
-  ```
+// backend/src/auth/auth.controller.ts
+- Add login/register endpoints
+- Implement OAuth callback handler
+- Create session management
+```
 
-- [ ] 6. Dashboard Components
-  - Create `frontend/components/dashboard/Dashboard.tsx` main layout
-  - Implement `frontend/components/dashboard/ProjectsList.tsx`
-  - Add `frontend/components/dashboard/Analytics.tsx` with charts
-  - Create real-time updates using WebSocket
-  - Write component and integration tests
+- [ ] 2.2 Auth Guards and Decorators
+```typescript
+// backend/src/auth/guards/jwt.guard.ts
+- Create JWT authentication guard
+- Implement role-based authorization
+- Add request context utilities
+```
 
-- [ ] 7. Project Management Interface
-  - Create `frontend/components/projects/ProjectForm.tsx`
-  - Implement `frontend/components/projects/ProjectDetails.tsx`
-  - Add `frontend/components/projects/MemberManagement.tsx`
-  - Create drag-and-drop task management
-  - Write component tests
+## 3. Project Management Module
+- [ ] 3.1 Project Service
+```typescript
+// backend/src/projects/project.service.ts
+- Implement CRUD operations
+- Add member management methods
+- Create project statistics calculator
+- Write unit tests
 
-- [ ] 8. File Management System
-  - Create `backend/src/files/files.service.ts` for file operations
-  - Implement file upload with multer
-  - Add `frontend/components/files/FileUpload.tsx`
-  - Create file preview and download functionality
-  - Write file handling tests
+// backend/src/projects/dto/
+- Create CreateProjectDto
+- Add UpdateProjectDto
+- Implement validation schemas
+```
 
-- [ ] 9. Notification System
-  - Create `backend/src/notifications/notifications.service.ts`
-  - Implement email notification templates
-  - Add `frontend/components/notifications/NotificationCenter.tsx`
-  - Create real-time notification updates
-  - Write notification system tests
+- [ ] 3.2 Task Management
+```typescript
+// backend/src/tasks/task.service.ts
+- Add task CRUD operations
+- Implement status management
+- Create assignment functionality
+- Add unit tests
 
-- [ ] 10. API Integration Layer
-  - Create `frontend/services/api.service.ts` base service
-  - Implement request/response interceptors
-  - Add error handling middleware
-  - Create API documentation with Swagger
-  - Write API integration tests
+// backend/src/tasks/task.controller.ts
+- Create REST endpoints
+- Add validation middleware
+- Implement filtering and pagination
+```
 
-Each task includes:
-- Specific file paths and component names
-- TypeScript interfaces and types
-- Unit and integration tests
-- Validation schemas using class-validator/zod
-- Error handling and logging
-- Real-time updates where needed
+## 4. Frontend Authentication
+- [ ] 4.1 Auth Context and Hooks
+```typescript
+// frontend/src/contexts/AuthContext.tsx
+- Create authentication context
+- Implement useAuth hook
+- Add token management
+- Write context tests
 
-Testing Guidelines:
-- Use Jest for backend testing
-- Use React Testing Library for frontend
-- Write both unit and integration tests
-- Include error case testing
-- Test real-time functionality
-- Validate form submissions
+// frontend/src/hooks/useGoogleAuth.ts
+- Create Google OAuth hook
+- Add login state management
+- Implement error handling
+```
 
-The tasks are ordered to build incrementally, with each new feature building on previous functionality. Core infrastructure (database, auth) is implemented first, followed by business logic and finally UI components.
+## 5. Project Dashboard Components
+- [ ] 5.1 Project List Component
+```typescript
+// frontend/src/components/projects/ProjectList.tsx
+- Create project grid/list view
+- Implement sorting and filtering
+- Add loading states
+- Write component tests
+
+// frontend/src/components/projects/ProjectCard.tsx
+- Build project card component
+- Add progress indicators
+- Implement quick actions
+```
+
+- [ ] 5.2 Project Details Page
+```typescript
+// frontend/src/pages/projects/[id].tsx
+- Create project details layout
+- Implement task management interface
+- Add member management
+- Create edit/delete functionality
+```
+
+## 6. Task Management Interface
+- [ ] 6.1 Task Board Component
+```typescript
+// frontend/src/components/tasks/TaskBoard.tsx
+- Create drag-and-drop board
+- Implement column management
+- Add task filtering
+- Write component tests
+
+// frontend/src/components/tasks/TaskCard.tsx
+- Build task card component
+- Add status updates
+- Implement assignment interface
+```
+
+## 7. Real-time Updates
+- [ ] 7.1 WebSocket Integration
+```typescript
+// backend/src/websocket/websocket.gateway.ts
+- Implement WebSocket gateway
+- Add authentication middleware
+- Create event handlers
+- Write integration tests
+
+// frontend/src/hooks/useWebSocket.ts
+- Create WebSocket connection hook
+- Implement reconnection logic
+- Add message handlers
+```
+
+## 8. Analytics Dashboard
+- [ ] 8.1 Analytics Components
+```typescript
+// frontend/src/components/analytics/AnalyticsDashboard.tsx
+- Create charts and graphs
+- Implement data filtering
+- Add export functionality
+- Write component tests
+
+// frontend/src/hooks/useAnalytics.ts
+- Create analytics data hook
+- Implement caching
+- Add refresh functionality
+```
+
+Guidelines for Implementation:
+- Follow TDD approach - write tests before implementation
+- Use TypeScript strict mode and proper type definitions
+- Implement proper error handling and logging
+- Add input validation using class-validator and zod
+- Create reusable components and hooks
+- Follow NestJS and React best practices
+- Use proper state management patterns
+- Implement proper loading and error states
+- Add comprehensive test coverage
+
+Each task should be completed sequentially as they build upon each other. Code quality checks and tests must pass before moving to the next task.
