@@ -2,7 +2,7 @@
 
 ## Overview
 
-Production Ready App is a scalable SaaS platform built with enterprise-grade architecture following microservices principles. The system utilizes Next.js for the frontend, NestJS for the backend, and PostgreSQL for data persistence. The architecture emphasizes security, scalability, and maintainability.
+Production Ready App is a scalable SaaS platform built with enterprise-grade architecture, focusing on security, performance, and maintainability. The system follows a microservices-based architecture with clear separation of concerns, implementing Domain-Driven Design (DDD) principles.
 
 ## Architecture
 
@@ -19,21 +19,21 @@ Production Ready App is a scalable SaaS platform built with enterprise-grade arc
    - Modular microservices architecture
    - RESTful API endpoints
    - WebSocket gateway for real-time communication
-   - JWT-based authentication
-   - Role-based access control (RBAC)
+   - Task queue system for background jobs
+   - Caching layer with Redis
 
 3. **Database Layer (PostgreSQL)**
-   - TypeORM for database interactions
-   - Database migrations
-   - Connection pooling
+   - Multi-tenant architecture
    - Read replicas for scaling
+   - Materialized views for analytics
+   - Partitioned tables for large datasets
 
 4. **External Integrations**
    - Google OAuth for authentication
    - AWS S3 for file storage
    - SendGrid for email notifications
-   - Redis for caching
-   - Elasticsearch for search functionality
+   - Stripe for payments
+   - Analytics services integration
 
 ## Components and Interfaces
 
@@ -43,22 +43,19 @@ Production Ready App is a scalable SaaS platform built with enterprise-grade arc
 @Injectable()
 export class AuthService {
   async validateUser(email: string, password: string): Promise<User>;
-  async login(user: User): Promise<{ access_token: string }>;
-  async register(createUserDto: CreateUserDto): Promise<User>;
+  async googleLogin(token: string): Promise<AuthResponse>;
 }
 
 @Injectable()
 export class ProjectService {
-  async createProject(createProjectDto: CreateProjectDto): Promise<Project>;
-  async getProjects(userId: string): Promise<Project[]>;
-  async updateProject(id: string, updateProjectDto: UpdateProjectDto): Promise<Project>;
+  async createProject(data: CreateProjectDto): Promise<Project>;
+  async getProjectAnalytics(projectId: string): Promise<ProjectAnalytics>;
 }
 
 @Injectable()
-export class TaskService {
-  async createTask(createTaskDto: CreateTaskDto): Promise<Task>;
-  async getTasks(projectId: string): Promise<Task[]>;
-  async updateTaskStatus(id: string, status: TaskStatus): Promise<Task>;
+export class NotificationService {
+  async sendEmail(to: string, template: EmailTemplate, data: any): Promise<void>;
+  async sendRealTimeNotification(userId: string, notification: Notification): Promise<void>;
 }
 ```
 
@@ -66,24 +63,21 @@ export class TaskService {
 
 ```typescript
 interface DashboardProps {
-  projects: Project[];
-  tasks: Task[];
   analytics: AnalyticsData;
-  onProjectCreate: (project: CreateProjectDto) => void;
-  onTaskUpdate: (task: UpdateTaskDto) => void;
+  projects: Project[];
+  onRefresh: () => void;
 }
 
-interface ProjectBoardProps {
+interface ProjectCardProps {
   project: Project;
-  tasks: Task[];
-  onTaskDrag: (taskId: string, status: TaskStatus) => void;
-  onTaskCreate: (task: CreateTaskDto) => void;
+  onUpdate: (project: Project) => void;
+  onDelete: (id: string) => void;
 }
 
-interface AnalyticsChartProps {
-  data: AnalyticsData;
-  timeRange: TimeRange;
-  onTimeRangeChange: (range: TimeRange) => void;
+interface FileUploadProps {
+  maxSize: number;
+  allowedTypes: string[];
+  onUpload: (file: File) => Promise<void>;
 }
 ```
 
@@ -101,10 +95,10 @@ export class User {
   email: string;
 
   @Column()
-  password: string;
+  hashedPassword: string;
 
-  @Column({ type: 'enum', enum: UserRole })
-  role: UserRole;
+  @Column({ type: 'jsonb', nullable: true })
+  googleProfile: any;
 
   @OneToMany(() => Project, project => project.owner)
   projects: Project[];
@@ -118,7 +112,7 @@ export class Project {
   @Column()
   name: string;
 
-  @Column()
+  @Column({ type: 'text' })
   description: string;
 
   @ManyToOne(() => User, user => user.projects)
@@ -126,6 +120,9 @@ export class Project {
 
   @OneToMany(() => Task, task => task.project)
   tasks: Task[];
+
+  @CreateDateColumn()
+  createdAt: Date;
 }
 
 @Entity('tasks')
@@ -136,7 +133,7 @@ export class Task {
   @Column()
   title: string;
 
-  @Column()
+  @Column({ type: 'text' })
   description: string;
 
   @Column({ type: 'enum', enum: TaskStatus })
@@ -144,33 +141,31 @@ export class Task {
 
   @ManyToOne(() => Project, project => project.tasks)
   project: Project;
-
-  @ManyToOne(() => User)
-  assignee: User;
 }
 ```
 
 ## Error Handling
 
-- Global exception filter for consistent error responses
-- Custom exception classes for specific error cases
-- HTTP status codes mapping
-- Error logging and monitoring
-- Frontend error boundary implementation
-
+1. **Global Exception Filter**
 ```typescript
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: any, host: ArgumentsHost) {
-    const ctx = host.switchToHttp();
-    const response = ctx.getResponse();
-    const status = exception.getStatus?.() || HttpStatus.INTERNAL_SERVER_ERROR;
+    // Handle different types of exceptions
+    // Return standardized error responses
+  }
+}
+```
 
-    response.status(status).json({
-      statusCode: status,
-      message: exception.message,
-      timestamp: new Date().toISOString(),
-    });
+2. **Custom Exceptions**
+```typescript
+export class BusinessException extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly message: string,
+    public readonly status: number = HttpStatus.BAD_REQUEST,
+  ) {
+    super(message);
   }
 }
 ```
@@ -178,40 +173,50 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 ## Testing Strategy
 
 1. **Unit Tests**
-   - Jest for both frontend and backend
-   - Component testing with React Testing Library
-   - Service and controller unit tests
+   - Jest for testing framework
+   - Mock external dependencies
+   - Test business logic in isolation
 
 2. **Integration Tests**
-   - API endpoint testing
+   - Test API endpoints
    - Database integration tests
    - External service integration tests
 
 3. **E2E Tests**
-   - Cypress for frontend E2E testing
-   - API E2E testing with SuperTest
-   - Performance testing with k6
+   - Cypress for frontend testing
+   - API endpoint testing
+   - User flow testing
 
 ```typescript
 describe('ProjectService', () => {
-  let service: ProjectService;
-
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [ProjectService],
-    }).compile();
-
-    service = module.get<ProjectService>(ProjectService);
-  });
-
-  it('should create a project', async () => {
-    const project = await service.createProject({
+  it('should create a new project', async () => {
+    const project = await projectService.createProject({
       name: 'Test Project',
-      description: 'Test Description',
+      description: 'Test Description'
     });
     expect(project).toBeDefined();
   });
 });
 ```
 
-This design document provides a solid foundation for implementing the Production Ready App with all specified features while maintaining scalability, security, and maintainability.
+## Security Considerations
+
+1. **Authentication & Authorization**
+   - JWT-based authentication
+   - Role-based access control
+   - OAuth 2.0 integration
+
+2. **Data Protection**
+   - Data encryption at rest
+   - HTTPS enforcement
+   - Input validation
+   - XSS protection
+   - CSRF protection
+
+3. **API Security**
+   - Rate limiting
+   - Request validation
+   - API key management
+   - Audit logging
+
+This design document provides a foundation for implementing the Production Ready App with scalability, security, and maintainability in mind. The architecture supports all required features while following best practices and industry standards.
